@@ -4,10 +4,24 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"runtime/pprof"
 	"strings"
+	"syscall"
 )
 
 func main() {
+	//cpuprofile := "cpu-client.pprof"
+	//f, err := os.Create(cpuprofile)
+	//if err != nil {
+	//	fmt.Fprintf(os.Stderr, "could not create CPU profile: %v\n", err)
+	//	panic(err)
+	//}
+	//if err := pprof.StartCPUProfile(f); err != nil {
+	//	fmt.Fprintf(os.Stderr, "could not start CPU profile: %v\n", err)
+	//	panic(err)
+	//}
+
 	addrName := "/tmp/echo.sock"
 	conn, err := net.Dial("unix", addrName)
 	if err != nil {
@@ -16,27 +30,35 @@ func main() {
 	}
 	defer conn.Close()
 
-	var message string
-	if len(os.Args) > 1 {
-		message = strings.Join(os.Args[1:], " ")
-	} else {
-		message = fmt.Sprintf("Hello, %s", addrName)
-	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		pprof.StopCPUProfile()
+		os.Exit(1)
+	}()
 
-	fmt.Println("Sending message:", message)
-	_, err = conn.Write([]byte(message))
-	if err != nil {
-		fmt.Println("Error sending message:", err.Error())
-		return
-	}
+	for {
+		var message string
+		if len(os.Args) > 1 {
+			message = strings.Join(os.Args[1:], " ")
+		} else {
+			message = fmt.Sprintf("Hello, %s", addrName)
+		}
 
-	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
-	if err != nil {
-		fmt.Println("Error reading response:", err.Error())
-		return
-	}
-	fmt.Println("Received message:", string(buf[:n]))
+		fmt.Println("Sending message:", message)
+		_, err = conn.Write([]byte(message))
+		if err != nil {
+			fmt.Println("Error sending message:", err.Error())
+			return
+		}
 
-	select {}
+		buf := make([]byte, 4096)
+		n, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading response:", err.Error())
+			return
+		}
+		fmt.Println("Received message:", string(buf[:n]))
+	}
 }

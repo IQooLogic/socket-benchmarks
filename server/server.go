@@ -6,9 +6,23 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/signal"
+	"runtime/pprof"
+	"syscall"
 )
 
 func main() {
+	cpuprofile := "cpu-server.pprof"
+	f, err := os.Create(cpuprofile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not create CPU profile: %v\n", err)
+		panic(err)
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		fmt.Fprintf(os.Stderr, "could not start CPU profile: %v\n", err)
+		panic(err)
+	}
+
 	addrName := "/tmp/echo.sock"
 	os.Remove(addrName)
 
@@ -19,6 +33,15 @@ func main() {
 	}
 
 	defer l.Close()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		os.Remove(addrName)
+		pprof.StopCPUProfile()
+		os.Exit(1)
+	}()
 
 	fmt.Println("Listening on ", addrName)
 
@@ -51,7 +74,8 @@ func handleConn(conn net.Conn) {
 		}
 
 		message := string(buf[:n])
-		fmt.Println("Message received:", message)
+		// message := unsafe.String(unsafe.SliceData(buf), n)
+		// fmt.Println("Message received:", message)
 
 		response := fmt.Sprintf("Hello, %s! You sent: '%s'", conn.RemoteAddr().String(), message)
 
