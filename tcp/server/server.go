@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"runtime/pprof"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -23,10 +24,8 @@ func main() {
 		panic(err)
 	}
 
-	addrName := "/tmp/echo.sock"
-	os.Remove(addrName)
-
-	l, err := net.ListenUnix("unix", &net.UnixAddr{Name: addrName, Net: "unix"})
+	addrName := "localhost:8080"
+	l, err := net.Listen("tcp", addrName)
 	if err != nil {
 		fmt.Println("Error listening:", err.Error())
 		return
@@ -38,9 +37,17 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		os.Remove(addrName)
 		pprof.StopCPUProfile()
 		os.Exit(1)
+	}()
+
+	t := time.NewTimer(2 * time.Minute)
+	go func() {
+		<-t.C
+		fmt.Println("time is up!")
+		t.Stop()
+		pprof.StopCPUProfile()
+		os.Exit(0)
 	}()
 
 	fmt.Println("Listening on ", addrName)
